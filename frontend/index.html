@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Study Summarizer</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <button id="logout-btn" style="float: right; background: #dc2626">
+      Logout
+    </button>
+
+    <h1>AI Study Summarizer</h1>
+
+    <textarea id="note-input" placeholder="Paste your notes here..."></textarea>
+    <button id="summarize-btn">Generate Summary</button>
+
+    <h2>Summary</h2>
+    <p id="summary-output"></p>
+
+    <h2>Flashcards</h2>
+    <ul id="flashcards-list"></ul>
+
+    <script src="js/api.js"></script>
+    <script src="js/generate.js"></script>
+  </body>
+</html>

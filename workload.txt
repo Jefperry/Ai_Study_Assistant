@@ -1,0 +1,533 @@
+Working Flask app with routes: /register, /login, /generate, /summaries, /summaries/<id> (DELETE).
+
+SQL schema applied to MySQL (use provided ai_study_assistant schema).
+
+Frontend pages: index.html (dashboard), login.html, register.html, history.html, result.html.
+
+README with instructions to run locally and env var list.
+
+requirements.txt and example .env.example.
+
+Unit / integration tests for core endpoints (optional but recommended).
+
+Prompt templates file for HuggingFace.
+
+AI SPECIFICATIONS:
+- Model: google/flan-t5-small (faster, less memory ~500MB)
+- Text Limit: 10,000 characters maximum
+- Flashcard Generation: Rule-based heuristics (extract key terms and definitions)
+- Deployment: Memory-optimized for production efficiency
+
+Repo & folder structure (recommended)
+ai-study-assistant/
+├─ backend/
+│  ├─ app.py
+│  ├─ config.py
+│  ├─ models.py
+│  ├─ routes/
+│  │  ├─ auth_routes.py
+│  │  ├─ ai_routes.py
+│  ├─ services/
+│  │  ├─ ai_client.py
+│  │  ├─ summarizer_hf.py
+│  │  ├─ flashcard_generator.py
+│  ├─ templates/
+│  │  ├─ prompt_templates.py
+│  ├─ requirements.txt
+│  ├─ .env.example
+├─ frontend/
+│  ├─ index.html
+│  ├─ login.html
+│  ├─ register.html
+│  ├─ history.html
+│  ├─ result.html
+│  ├─ css/
+│  │  ├─ styles.css
+│  ├─ js/
+│  │  ├─ api.js
+│  │  ├─ auth.js
+│  │  ├─ generate.js
+│  │  ├─ history.js
+├─ sql/
+│  ├─ schema.sql
+├─ README.md
+
+
+Step-by-step tasks (Sequential with logical groupings)
+PHASE A — Project scaffolding & DB connection (Foundation)
+
+Tasks
+
+Create repo and folder structure above with new services/ and templates/ directories.
+
+Add .env and .env.example with AI model configurations.
+
+Update requirements.txt with HuggingFace dependencies:
+- transformers>=4.30.0
+- torch>=2.0.0
+- google-flan-t5-small model dependencies
+
+Create Python virtualenv and install dependencies.
+
+Implement config.py to read env vars including:
+- TEXT_MAX_LENGTH = 10000
+- AI_MODEL_NAME = "google/flan-t5-small"
+- AI_MODEL_CACHE_DIR (optional)
+
+Implement models.py with Flask-SQLAlchemy models for User and Summary (fields match SQL schema).
+
+Ensure sql/schema.sql includes proper CREATE DATABASE + tables with text length constraints.
+
+Acceptance Criteria
+
+Running flask shell connects to the MySQL DB and db.create_all() creates tables.
+
+Text input validation enforces 10,000 character limit.
+
+HuggingFace model loads successfully in development environment.
+
+Provide setup instructions in README for database initialization.
+
+PHASE B — Authentication (JWT)
+
+Tasks
+
+Implement /register route:
+
+Accept name, email, password.
+
+Hash password with werkzeug.security.generate_password_hash.
+
+Return success or error for duplicate emails.
+
+Implement /login route:
+
+Verify password.
+
+Return JWT access token (use create_access_token(identity=user.id)).
+
+Protect routes with @jwt_required() (e.g., /generate, /summaries).
+
+Acceptance Criteria
+
+Registering then logging in returns an access token.
+
+Protected routes return 401 without bearer token and 200 with valid token.
+
+Sample cURL
+
+curl -X POST http://localhost:5000/login -H "Content-Type: application/json" -d '{"email":"john@example.com","password":"pass"}'
+# returns { "access_token": "ey..." }
+
+PHASE C — AI summarization service (Backend AI Engine)
+
+Tasks
+
+Create services/ai_client.py - Main AI orchestrator:
+
+Initialize google/flan-t5-small model for summarization.
+
+Implement text preprocessing:
+- Validate 10,000 character limit before processing
+- Clean and normalize input text
+- Split text into chunks if needed (max 512 tokens per chunk)
+
+Implement generate_summary_and_flashcards(text) which returns:
+{
+  "summary": "bullet points or paragraph",
+  "flashcards": [{"q": "...", "a": "..."}, ...]
+}
+
+Create services/summarizer_hf.py:
+
+Use transformers.pipeline("text2text-generation", model="google/flan-t5-small").
+
+Implement text chunking for inputs approaching token limits.
+
+Combine multiple chunk summaries into cohesive final summary.
+
+Handle model loading errors and fallback gracefully.
+
+Create services/flashcard_generator.py:
+
+Implement rule-based heuristics for flashcard generation.
+
+Extract key terms and definitions from summary text.
+
+Pattern matching for:
+- "X is defined as Y" → Q: "What is X?" A: "Y"
+- "The main types of X are A, B, C" → Q: "What are the main types of X?" A: "A, B, C"
+- Important concepts and terminology identification
+
+Generate 4-8 flashcards per summary with quality filtering.
+
+Create templates/prompt_templates.py:
+
+Define structured prompts for flan-t5-small.
+
+Include templates for different content types (science, history, etc.).
+
+Standardize output formatting templates.
+
+Acceptance Criteria
+
+Given text ≤10,000 chars, API returns JSON with summary and 4-8 quality flashcards.
+
+Model loads efficiently (~500MB memory usage).
+
+Processing time <30 seconds for typical inputs.
+
+Handles edge cases (very short/long text, special characters).
+
+Output is valid JSON parseable by json.loads().
+
+Prompt templates for HuggingFace FLAN-T5-Small
+
+Summarization prompt:
+"Summarize the following text into 3-5 key points. Focus on the main concepts and important details:
+
+{input_text}"
+
+Flashcard generation approach (rule-based heuristics):
+- Extract definitions: "X is Y" → Q: "What is X?" A: "Y"
+- Extract concepts: "The main types of X include A, B, C" → Q: "What are the main types of X?" A: "A, B, C" 
+- Extract processes: "To do X, you must Y" → Q: "How do you do X?" A: "You must Y"
+- Extract relationships: "X causes Y" → Q: "What does X cause?" A: "Y"
+- Extract key terms: Important vocabulary → Q: "Define [term]" A: "[definition]"
+
+Pattern matching rules for flashcard extraction:
+1. Look for definition indicators: "is", "means", "refers to", "defined as"
+2. Find enumeration: "types of", "kinds of", "examples include", "such as"  
+3. Identify cause/effect: "leads to", "results in", "causes", "because"
+4. Spot processes: "steps to", "how to", "method for", "procedure"
+5. Recognize key terminology and create definition-based questions
+
+Target: Generate 4-8 high-quality flashcards per summary with varied question types.
+
+PHASE D — Backend API endpoints & Database operations
+
+Tasks
+
+Update routes/ai_routes.py:
+
+/generate (POST):
+- Header: Authorization: Bearer <token>
+- Body: { "text": "...", "title": "optional" }
+- Validate text length (max 10,000 chars) before processing
+- Call AI services: generate_summary_and_flashcards(text)
+- Save (user_id, title, input_text, summary_text, flashcards_json) to database
+- Return { id, title, summary, flashcards, created_at }
+
+/summaries (GET):
+- Header: Authorization: Bearer <token>
+- Returns paginated list of user's summaries
+- Include: id, title, created_at, summary_preview (first 100 chars)
+- Order by created_at DESC
+
+/summaries/<id> (GET):
+- Header: Authorization: Bearer <token>
+- Returns full summary & flashcards (owner verification)
+- Include: id, title, content, summary, flashcards, created_at
+
+/summaries/<id> (DELETE):
+- Header: Authorization: Bearer <token>
+- Delete summary (owner verification only)
+- Return confirmation message
+
+Error handling improvements:
+
+Add comprehensive input validation with friendly error messages.
+
+Implement rate limiting (max 10 requests per hour per user).
+
+Add processing timeouts and graceful AI service failures.
+
+Database optimizations:
+
+Add indexes on user_id and created_at for faster queries.
+
+Implement text field size limits matching 10k char constraint.
+
+Add summary metadata (word count, processing time).
+
+Acceptance Criteria
+
+All endpoints work with proper authentication and authorization.
+
+/generate processes text and saves results correctly.
+
+/summaries returns only user's data with pagination.
+
+Error responses are user-friendly and informative.
+
+Sample cURL commands work as documented.
+
+curl -X POST http://localhost:5000/api/ai/generate \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Your lecture notes...", "title":"Chapter 1 Notes"}'
+
+PHASE E — Frontend development (UI/UX) [Can work in parallel with Phase D]
+
+Tasks
+
+Enhanced authentication pages:
+
+login.html, register.html: Clean forms with validation and loading states.
+
+Store JWT tokens in localStorage with expiration handling.
+
+Add "Remember Me" option and auto-redirect after successful auth.
+
+Main dashboard (index.html):
+
+Textarea with character counter (0/10,000 chars) and paste placeholder.
+
+Title input field for naming summaries.
+
+Generate button with loading spinner and progress indicator.
+
+Real-time validation warnings (text too long, empty input).
+
+Results display (integrate into index.html or separate result.html):
+
+Summary display with bullet points or formatted paragraphs.
+
+Flashcard component with flip animation (Q/A cards).
+
+Action buttons: Save (if not auto-saved), Copy, Share, Export TXT.
+
+Success/error notifications with auto-dismiss.
+
+History management (history.html):
+
+Paginated list of saved summaries with search/filter functionality.
+
+Each entry shows: title, date, summary preview, action buttons.
+
+Quick actions: View, Delete, Duplicate, Export.
+
+Bulk operations: Select multiple, delete selected.
+
+Enhanced JavaScript (js/ directory):
+
+api.js: Improved error handling, retry logic, loading states.
+
+auth.js: Token refresh, logout timer, session management.
+
+generate.js: Form validation, character counting, result handling.
+
+history.js: Pagination, search, delete confirmations, export functions.
+
+Modern styling:
+
+Clean, minimal design with good typography and spacing.
+
+Responsive layout (mobile-first approach).
+
+Loading states, hover effects, and smooth transitions.
+
+Color scheme: neutral with accent colors for actions.
+
+Consistent button styles and form elements.
+
+Accessibility features (ARIA labels, keyboard navigation).
+
+Acceptance Criteria
+
+Complete user flow: register → login → paste text → generate → view results → save to history.
+
+All pages are responsive and work on mobile devices.
+
+Error handling provides clear, actionable feedback to users.
+
+Loading states give users feedback during processing.
+
+History page allows users to manage their saved summaries effectively.
+
+PHASE F — Testing, validation, and error handling
+
+Tasks
+
+Input validation and security:
+
+Enforce 10,000 character limit with client and server-side validation.
+
+Implement comprehensive input sanitization for XSS prevention.
+
+Add CSRF protection for state-changing operations.
+
+Validate file uploads if implemented (PDF parsing feature).
+
+Rate limiting and abuse prevention:
+
+Implement user-based rate limiting (10 requests/hour for /generate).
+
+Add IP-based rate limiting for authentication endpoints.
+
+Monitor and log suspicious activity patterns.
+
+Add cooldown periods for failed attempts.
+
+Error handling and resilience:
+
+Implement retry logic with exponential backoff for AI API calls.
+
+Provide user-friendly error messages for all failure scenarios.
+
+Add fallback responses when AI services are unavailable.
+
+Implement graceful degradation (save input even if AI fails).
+
+Add health check endpoints for monitoring.
+
+Performance optimization:
+
+Add response caching for identical text inputs.
+
+Implement database query optimization and indexing.
+
+Add compression for large text responses.
+
+Monitor memory usage during AI processing.
+
+Acceptance Criteria
+
+App handles all edge cases gracefully with helpful error messages.
+
+Performance remains stable under normal load (10 concurrent users).
+
+Security measures prevent common web vulnerabilities.
+
+Comprehensive error logging for debugging and monitoring.
+
+PHASE G — Polish and deployment features
+
+Tasks
+
+Export functionality:
+
+Export summaries and flashcards to TXT, JSON, and PDF formats.
+
+Implement bulk export (multiple summaries at once).
+
+Add email sharing functionality (optional).
+
+Generate shareable links for summaries (optional).
+
+Interactive features:
+
+Flashcard quiz mode: Simple JS-based study session with scoring.
+
+Study session timer and progress tracking.
+
+Flashcard difficulty rating and spaced repetition (basic).
+
+Search functionality across saved summaries.
+
+UI/UX polish:
+
+Light/dark mode toggle with user preference saving.
+
+Keyboard shortcuts for common actions.
+
+Improved animations and micro-interactions.
+
+Better mobile experience and touch gestures.
+
+Add tutorial/onboarding for new users.
+
+Deployment preparation:
+
+Environment-specific configurations (dev/prod).
+
+Database migration scripts and backup procedures.
+
+Docker containerization for easy deployment.
+
+Documentation for deployment on cloud platforms.
+
+Performance monitoring and logging setup.
+
+Acceptance Criteria
+
+All export formats work correctly and are properly formatted.
+
+Quiz mode provides engaging study experience.
+
+App is production-ready with proper deployment documentation.
+
+UI feels polished and professional for portfolio presentation.
+
+Testing & QA
+
+Manual test cases
+
+Register/login flow returns token and does not expose password.
+
+Paste 1–2 paragraphs → Generate → verify summary array length and flashcards count.
+
+Save & retrieve saved summaries as the same user; ensure other users cannot access them.
+
+Delete summary and confirm removal.
+
+Automated tests (suggested)
+
+Pytest unit tests for auth and DB models.
+
+Integration tests for /generate mock AI client (mock OpenAI/HF responses).
+
+Security & Production considerations (MVP → production)
+
+Always hash passwords (bcrypt via werkzeug).
+
+Set JWT expiration and refresh tokens if needed.
+
+Do not store raw API keys in repo. Use env vars or secret manager.
+
+Rate-limit /generate to avoid abuse (Flask-Limiter or proxy-level rate limits).
+
+Log minimal sensitive data (no plaintext inputs in public logs).
+
+Prompts & JSON enforcement (important)
+
+Make model output strict JSON — enclose instruction like:
+
+"Output ONLY valid JSON formatted EXACTLY as: 
+{"summary":["...","..."], "flashcards":[{"q":"...","a":"..."}, ...]}"
+
+
+Then parse with json.loads() and validate keys. If parsing fails, return a friendly error and optionally retry once.
+
+AI Engine Configuration and Deployment Strategy
+
+Primary AI Engine: HuggingFace with google/flan-t5-small
+- Memory usage: ~500MB (production-optimized)
+- Processing speed: 10-30 seconds per request
+- Input limit: 10,000 characters maximum
+- Model caching: Local model storage to avoid repeated downloads
+
+Flashcard Generation Strategy:
+- Rule-based heuristics for speed and reliability
+- Extract key terms and definitions using pattern matching
+- No additional model loading required (memory efficient)
+- Consistent output quality regardless of input domain
+
+Deployment Considerations:
+- Memory limit: 1GB total (500MB for model + 500MB for application)
+- CPU requirements: 1-2 cores sufficient for small scale
+- Storage: 2GB for model cache + database
+- Recommended platforms: Railway, Render (free tiers compatible)
+- Alternative: Heroku with performance dynos
+
+Performance optimization:
+- Model loaded once at application startup
+- Text preprocessing to maximize model efficiency  
+- Implement request queuing for high concurrency
+- Cache frequent similar requests (optional)
+
+Production Configuration:
+- Environment variables for model paths and limits
+- Graceful fallback when model fails to load
+- Health checks for AI service availability
+- Monitoring for memory usage and response times
