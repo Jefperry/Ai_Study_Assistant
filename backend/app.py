@@ -6,6 +6,7 @@ from models import db
 from routes.auth_routes import auth_bp
 # from routes.ai_routes import ai_bp  # Temporarily commented for Phase A testing
 
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -38,6 +39,7 @@ def create_app():
         })
 
     return app
+
 
 if __name__ == "__main__":
     app = create_app()
